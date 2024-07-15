@@ -47,3 +47,26 @@ def get_openai_response(qn, answers=None):
 
     return text, logprobs
 
+def get_gpt_entailment(question, text1, text2):
+    prompt = f"""We are evaluating answers to the question \"{question}\"\n"""
+    prompt += "Here are two possible answers:\n"
+    prompt += f"Possible Answer 1: {text1}\nPossible Answer 2: {text2}\n"
+    prompt += "Does Possible Answer 1 semantically entail Possible Answer 2? Respond only with entailment, contradiction, or neutral.\n"""
+    prompt += "Response:"""
+
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        model="gpt-4-turbo",
+        temperature=0.02,
+        max_tokens=200,
+    )
+
+    response = chat_completion.choices[0].message.content 
+
+    return response
+

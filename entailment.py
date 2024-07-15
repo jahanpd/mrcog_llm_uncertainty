@@ -10,21 +10,9 @@ The semantic_similarity.py script will use the above output and create a pkl of 
     {
         '{id}': semantic_set_ids
     }
-
-The confidence.py script will use the above outputs and create a dict with:
-    {
-        '{id}': {
-            'most_likely_answer_semantically': String, -- this is lowest perp in semantic majority
-            'most_likely_answer_perplexity_only': String,
-            'most_likely_sematically_true': Boolean,
-            'lowest_perplexity_in_semantic_majority': Boolean,
-            'semantic_uncertainty': float,
-            'perplexity': float,
-            'predictive_entropy': float,
-        } 
 """
 
-def check_bidirectional_entailment(phrase1, phrase2) -> bool:
+def check_bidirectional_entailment_deberta(phrase1, phrase2) -> bool:
     input = phrase1 + ' [SEP] ' + phrase2
     encoded_input = tokenizer.encode(input, padding=True)
     prediction = model(torch.tensor(torch.tensor([encoded_input]), device='cuda'))['logits']
@@ -60,6 +48,10 @@ def get_set_dict(truth, gen_list) -> SemanticSet:
                 semantic_set_ids[j] = semantic_set_ids[i]
 
     return semantic_set_ids
+
+
+
+
 
 
 test = check_bidirectional_entailment('capital of france is paris', 
