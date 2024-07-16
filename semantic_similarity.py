@@ -1,7 +1,8 @@
 import pickle
 from entailment import get_set_dict, SemanticSet
-from prompt_utilss import get_gpt_entailment
+from prompt_utils import get_gpt_entailment
 import argparse
+from joblib import Parallel, delayed
 
 parser = argparse.ArgumentParser(
                     prog='Semantic Similarity',
@@ -24,8 +25,6 @@ ENTAILMENT = args.entailment
 
 with open(f'./data/{MODEL}_generations.pkl', 'rb') as infile:
     sequences = pickle.load(infile)
-
-print(sequences[1])
 
 semantic_sets: SetSemanticSets = {}
 
@@ -52,9 +51,9 @@ if args.entailment == "deberta":
         print(semantic_set_ids)
         semantic_sets[s['id']] = semantic_set_ids
 
-if arg.entailment == "gpt":
-
-    for s in sequences:
+if args.entailment == "gpt":
+    def process_sequence(s):
+        print("id ", s['id'])
         question = s["question"]
         answers = s["generated_answers"]
         # add the true answer to index 0
@@ -75,7 +74,11 @@ if arg.entailment == "gpt":
                 binary_response = entail_response.lower()[:30]
                 if 'entailment' in binary_response:
                     semantic_set_ids[j] = semantic_set_ids[i]
-        semantic_sets[s['id']] = semantic_set_ids
+        return (s['id'], semantic_set_ids)
+
+    results = Parallel(n_jobs=10)(delayed(process_sequence)(s) for s in sequences)
+    for idx, ssid in results:
+        semantic_sets[idx] = ssid
     
 
 with open(f'./data/{MODEL}_{ENTAILMENT}_semantic_similarity.pkl', 'wb') as outfile:

@@ -41,7 +41,7 @@ def get_set_dict(truth, gen_list) -> SemanticSet:
     for i, phrase1 in enumerate(gen_list):
         # this inner loop compared each gen ans with other answers
         for j in range(i + 1, len(gen_list)):
-            gen_entailment = check_bidirectional_entailment(
+            gen_entailment = check_bidirectional_entailment_deberta(
                     phrase1,
                     gen_list[j])
             if gen_entailment:
@@ -54,6 +54,6 @@ def get_set_dict(truth, gen_list) -> SemanticSet:
 
 
 
-test = check_bidirectional_entailment('capital of france is paris', 
-                                      'the main city of governance for the french people is paris')
-print(test)
+# test = check_bidirectional_entailment('capital of france is paris', 
+                                    #   'the main city of governance for the french people is paris')
+# print(test)

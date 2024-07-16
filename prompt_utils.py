@@ -53,6 +53,7 @@ def get_gpt_entailment(question, text1, text2):
     prompt += f"Possible Answer 1: {text1}\nPossible Answer 2: {text2}\n"
     prompt += "Does Possible Answer 1 semantically entail Possible Answer 2? Respond only with entailment, contradiction, or neutral.\n"""
     prompt += "Response:"""
+    print("prompt ", prompt)
 
     chat_completion = client.chat.completions.create(
         messages=[
@@ -67,6 +68,7 @@ def get_gpt_entailment(question, text1, text2):
     )
 
     response = chat_completion.choices[0].message.content 
+    print("response ", response)
 
     return response
 

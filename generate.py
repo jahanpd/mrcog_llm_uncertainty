@@ -74,5 +74,8 @@ for index, row in QUESTIONS.iterrows():
     )
     result.append(output)
 
+    with open(f'./data/{MODEL}_generations.pkl', 'wb') as outfile:
+        pickle.dump(result, outfile)
+
 with open(f'./data/{MODEL}_generations.pkl', 'wb') as outfile:
     pickle.dump(result, outfile)
