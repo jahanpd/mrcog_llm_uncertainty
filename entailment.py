@@ -1,9 +1,17 @@
 import torch
+import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from typing import TypedDict
+from openai import OpenAI
+import os
+import logging
+from datetime import datetime
 
-tokenizer = AutoTokenizer.from_pretrained("microsoft/deberta-large-mnli")
-model = AutoModelForSequenceClassification.from_pretrained("microsoft/deberta-large-mnli").cuda()
+logger = logging.getLogger("")
+logging.basicConfig(filename= f'./logs/entailment-{datetime.now().isoformat()}.log', encoding='utf-8', level=logging.INFO)
+
+
+tokenizer = AutoTokenizer.from_pretrained("microsoft/deberta-v2-xlarge-mnli")
+model = AutoModelForSequenceClassification.from_pretrained("microsoft/deberta-v2-xlarge-mnli").cuda()
 
 """
 The semantic_similarity.py script will use the above output and create a pkl of a dict:
@@ -11,45 +19,92 @@ The semantic_similarity.py script will use the above output and create a pkl of 
         '{id}': semantic_set_ids
     }
 """
+def check_deberta_bidirectional(phrase1, phrase2) -> int:
+    inputs = tokenizer(phrase1, phrase2, return_tensors="pt").to('cuda')
+    # The model checks if text1 -> text2, i.e. if text2 follows from text1.
+    # check_implication('The weather is good', 'The weather is good and I like you') --> 1
+    # check_implication('The weather is good and I like you', 'The weather is good') --> 2
+    outputs = model(**inputs)
+    logits = outputs.logits
+    # Deberta-mnli returns `neutral` and `entailment` classes at indices 1 and 2.
+    largest_index = torch.argmax(F.softmax(logits, dim=1))  # pylint: disable=no-member
+    prediction = largest_index.cpu().item()
+    return prediction
 
-def check_bidirectional_entailment_deberta(phrase1, phrase2) -> bool:
-    input = phrase1 + ' [SEP] ' + phrase2
-    encoded_input = tokenizer.encode(input, padding=True)
-    prediction = model(torch.tensor(torch.tensor([encoded_input]), device='cuda'))['logits']
-    predicted_label = torch.argmax(prediction, dim=1)
 
-    reversed_input = phrase2 + ' [SEP] ' + phrase1
-    encoded_reversed_input = tokenizer.encode(reversed_input, padding=True)
-    reverse_prediction = model(torch.tensor(torch.tensor([encoded_reversed_input]), device='cuda'))['logits']
-    reverse_predicted_label = torch.argmax(reverse_prediction, dim=1)
+def deberta_prompt(question, answer):
+    return f'''Question: {question}
+Answer: {answer}'''
 
-    if 0 in predicted_label or 0 in reverse_predicted_label:
-        return False
+def get_deberta_entailment(question, phrase1, phrase2, strict=False) -> bool:
+    forward = check_deberta_bidirectional(
+        deberta_prompt(question, phrase1), deberta_prompt(question, phrase2))
+    reverse = check_deberta_bidirectional(
+        deberta_prompt(question, phrase2), deberta_prompt(question, phrase1))
+
+    if strict:
+            semantically_equivalent = (forward == 2) and (reverse == 2)
     else:
-        return True
+        implications = [forward, reverse]
+        # Check if none of the implications are 0 (contradiction) and not both of them are neutral.
+        semantically_equivalent = (0 not in implications) and ([1, 1] != implications)
+
+    return semantically_equivalent
 
 SemanticSet = dict[int, int]
 
-def get_set_dict(truth, gen_list) -> SemanticSet:
-    # for each generated answer compare it to each other answer
-    # and also the ground truth answer
-    gen_list.insert(0, truth)
-    semantic_set_ids = {}
-    for idx, answer in enumerate(gen_list):
-        semantic_set_ids[idx] = idx
-
-    for i, phrase1 in enumerate(gen_list):
-        # this inner loop compared each gen ans with other answers
-        for j in range(i + 1, len(gen_list)):
-            gen_entailment = check_bidirectional_entailment_deberta(
-                    phrase1,
-                    gen_list[j])
-            if gen_entailment:
-                semantic_set_ids[j] = semantic_set_ids[i]
-
-    return semantic_set_ids
+client = OpenAI(
+    api_key=os.environ["OPENAI_KEY"],
+)
 
 
+def gpt_entailment_prompt(question, text1, text2):
+    prompt = f"""We are evaluating answers to the question \"{question}\"\n"""
+    prompt += "Here are two possible answers:\n"
+    prompt += f"Possible Answer 1: {text1}\nPossible Answer 2: {text2}\n"
+    prompt += "Does Possible Answer 1 semantically entail Possible Answer 2? Respond only with entailment, contradiction, or neutral.\n"""
+    prompt += "Response:"""
+    return prompt
+
+def get_llm_entailement_response(prompt):
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        model="gpt-4o-mini",
+        temperature=0.02,
+        max_tokens=200,
+    )
+
+    binary_response = chat_completion.choices[0].message.content.lower()
+
+    if 'entailment' in binary_response:
+        return 2
+    elif 'neutral' in binary_response:
+        return 1
+    elif 'contradiction' in binary_response:
+        return 0
+    else:
+        logging.warning('MANUAL NEUTRAL!')
+        logging.warning(prompt)
+        logging.warning(binary_response)
+        return 1
+
+def get_gpt_entailment(question, text1, text2, strict=False):
+    forward = get_llm_entailement_response(gpt_entailment_prompt(question, text1, text2))
+    reverse = get_llm_entailement_response(gpt_entailment_prompt(question, text2, text1))
+
+    if strict:
+            semantically_equivalent = (forward == 2) and (reverse == 2)
+    else:
+        implications = [forward, reverse]
+        # Check if none of the implications are 0 (contradiction) and not both of them are neutral.
+        semantically_equivalent = (0 not in implications) and ([1, 1] != implications)
+
+    return semantically_equivalent
 
 
 

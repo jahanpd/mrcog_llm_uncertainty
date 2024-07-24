@@ -1,6 +1,5 @@
 import pickle
-from entailment import get_set_dict, SemanticSet
-from prompt_utils import get_gpt_entailment
+from entailment import SemanticSet, get_deberta_entailment, get_gpt_entailment
 import argparse
 from joblib import Parallel, delayed
 
@@ -30,26 +29,39 @@ semantic_sets: SetSemanticSets = {}
 
 if args.entailment == "deberta":
     for s in sequences:
-        generated_answers = []
-        for g in s['generated_answers']:
-            conditioned_response = '''Question: {question}
-    Answer: {answer}'''.format(
-                question=s['question'],
-                answer=g
-            )
-            generated_answers.append(conditioned_response)
+        print("id ", s['id'])
+        question = s["question"]
+        answers = s["generated_answers"]
+        # add the true answer to index 0
+        answers.insert(0, s["true_answer"])
+        # base semantic set 
+        semantic_set_ids: SemanticSet = {}
+        for idx, answer in enumerate(answers):
+            # initialize with a bad answer
+            semantic_set_ids[idx] = -1
 
-        conditioned_truth = '''Question: {question}
-    Answer: {answer}'''.format(
-            question=s['question'],
-            answer=s['true_answer']
-        )
+        # Keep track of current id.
+        next_id = 0
+        for i, string1 in enumerate(answers):
+            # this inner loop compared each gen ans with other answers
 
-        semantic_set_ids: SemanticSet = get_set_dict(
-                conditioned_truth, generated_answers)
-        
-        print(semantic_set_ids)
+            # Check if string1 already has an id assigned.
+            if semantic_set_ids[i] == -1:
+                semantic_set_ids[i] = next_id
+                # If string1 has not been assigned an id, assign it next_id.
+                for j in range(i + 1, len(answers)):
+                    entailed = get_deberta_entailment(
+                            question,
+                            string1,
+                            answers[j],
+                            strict=False
+                            )
+                    if entailed:
+                        semantic_set_ids[j] = semantic_set_ids[i]
+                next_id += 1
+
         semantic_sets[s['id']] = semantic_set_ids
+
 
 if args.entailment == "gpt":
     def process_sequence(s):
@@ -60,24 +72,37 @@ if args.entailment == "gpt":
         answers.insert(0, s["true_answer"])
         # base semantic set 
         semantic_set_ids: SemanticSet = {}
-        for idx, answer in enumerate(s["generated_answers"]):
-            semantic_set_ids[idx] = idx
+        for idx, answer in enumerate(answers):
+            # initialize with a bad answer
+            semantic_set_ids[idx] = -1
 
-        for i, answer1 in enumerate(answers):
+        # Keep track of current id.
+        next_id = 0
+        for i, string1 in enumerate(answers):
             # this inner loop compared each gen ans with other answers
-            for j in range(i + 1, len(answers)):
-                entail_response = get_gpt_entailment(
-                        question,
-                        answer1,
-                        answers[j]
-                        )
-                binary_response = entail_response.lower()[:30]
-                if 'entailment' in binary_response:
-                    semantic_set_ids[j] = semantic_set_ids[i]
+
+            # Check if string1 already has an id assigned.
+            if semantic_set_ids[i] == -1:
+                semantic_set_ids[i] = next_id
+                # If string1 has not been assigned an id, assign it next_id.
+                for j in range(i + 1, len(answers)):
+                    entailed = get_gpt_entailment(
+                            question,
+                            string1,
+                            answers[j],
+                            strict=False
+                            )
+                    if entailed:
+                        semantic_set_ids[j] = semantic_set_ids[i]
+                next_id += 1
+
         return (s['id'], semantic_set_ids)
 
-    results = Parallel(n_jobs=10)(delayed(process_sequence)(s) for s in sequences)
-    for idx, ssid in results:
+    # results = Parallel(n_jobs=10)(delayed(process_sequence)(s) for s in sequences)
+    # for idx, ssid in results:
+    #     semantic_sets[idx] = ssid
+    for s in sequences:
+        idx, ssid = process_sequence(s)
         semantic_sets[idx] = ssid
     
 
