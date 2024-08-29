@@ -1,34 +1,45 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from roc_utils import *
+from sklearn.metrics import RocCurveDisplay
 from tabulate import tabulate
 
 def rocs_from_results(results_array, axes, titles):
     for results, ax, title in zip(results_array, axes, titles):
-        negent = -1*np.array(results["entropy"])
-        ent_correct = np.array(results["entropy_correct"]).astype(np.float32)
 
-        negdent = -1*np.array(results["dentropy"])
-        dent_correct = np.array(results["dentropy_correct"]).astype(np.float32)
-
-        neg_og_ent = -1*np.array(results["og_entropy"])
-        og_ent_correct = np.array(results["og_entropy_correct"]).astype(np.float32)
-
-        negperp = -1*np.array(results["perplexity"])
-        perp_correct = np.array(results["perplexity_correct"]).astype(np.float32)
-
-
-        roc1 = compute_roc(X=negent, y=ent_correct, pos_label=1.0)
-        roc2 = compute_roc(X=negperp, y=perp_correct, pos_label=1.0)
-        roc3 = compute_roc(X=negdent, y=dent_correct, pos_label=1.0)
-        roc4 = compute_roc(X=neg_og_ent, y=og_ent_correct, pos_label=1.0)
-
-        plot_roc(roc1, label="Semantic Uncertainty", color="red", ax=ax)
-        plot_roc(roc3, label="Discrete Semantic Uncertainty", color="orange", ax=ax)
-        plot_roc(roc4, label="Original Semantic Uncertainty", color="blue", ax=ax)
-        plot_roc(roc2, label="Perplexity", color="green", ax=ax)
+        sement = RocCurveDisplay.from_predictions(
+            np.array(results["entropy_correct"]).astype(np.float32),
+            -1*np.array(results["entropy"]),
+            ax=ax,
+            color="red",
+            name="Semantic Uncertainty"
+        )
+        discent = RocCurveDisplay.from_predictions(
+            np.array(results["dentropy_correct"]).astype(np.float32),
+            -1*np.array(results["dentropy"]),
+            ax=ax,
+            color="orange",
+            name="Discrete Semantic Uncertainty"
+        )
+        perp = RocCurveDisplay.from_predictions(
+            np.array(results["perplexity_correct"]).astype(np.float32),
+            -1*np.array(results["perplexity"]),
+            ax=ax,
+            color="green",
+            name="Perplexity"
+        )
 
         ax.set_title(title)
+
+def su_rocs_from_results(results_array, ax, titles, main_title=""):
+    for results, title in zip(results_array, titles):
+
+        _ = RocCurveDisplay.from_predictions(
+            np.array(results["entropy_correct"]).astype(np.float32),
+            -1*np.array(results["entropy"]),
+            ax=ax,
+            name=title
+        )
+    ax.set_title(main_title)
 
 
 def table_from_results(results_array, headers):
