@@ -2,16 +2,21 @@ import pickle
 from entailment import SemanticSet, get_deberta_entailment, get_gpt_entailment
 import argparse
 from joblib import Parallel, delayed
+from joblib import wrap_non_picklable_objects
 
 parser = argparse.ArgumentParser(
                     prog='Semantic Similarity',
                     description='Script 2: Measure semantic similarity and cluster into sets for generated and true answers',
                     epilog='')
 
-parser.add_argument('model', default="openai", type=str,
+parser.add_argument('--model', default="openai", type=str,
                     choices=["openai"])     
 
-parser.add_argument('entailment', default="gpt", type=str,
+parser.add_argument('--temp', default=1.0, type=float)     
+
+parser.add_argument('--reasoning', action='store_true')     
+
+parser.add_argument('--entailment', default="gpt", type=str,
                     choices=["gpt", "deberta"])     
 
 args = parser.parse_args()
@@ -22,14 +27,14 @@ SetSemanticSets = dict[int, SemanticSet]
 MODEL = args.model
 ENTAILMENT = args.entailment
 
-with open(f'./data/{MODEL}_generations.pkl', 'rb') as infile:
+with open(f'./data/{MODEL}_temp={args.temp}_reasoning={args.reasoning}_generations.pkl', 'rb') as infile:
     sequences = pickle.load(infile)
 
 semantic_sets: SetSemanticSets = {}
 
 if args.entailment == "deberta":
     for s in sequences:
-        print("id ", s['id'])
+        print("id ", s['id'], "deberta")
         question = s["question"]
         answers = s["generated_answers"]
         # add the true answer to index 0
@@ -65,7 +70,7 @@ if args.entailment == "deberta":
 
 if args.entailment == "gpt":
     def process_sequence(s):
-        print("id ", s['id'])
+        print("id ", s['id'], "gpt")
         question = s["question"]
         answers = s["generated_answers"]
         # add the true answer to index 0
@@ -98,13 +103,13 @@ if args.entailment == "gpt":
 
         return (s['id'], semantic_set_ids)
 
-    # results = Parallel(n_jobs=10)(delayed(process_sequence)(s) for s in sequences)
-    # for idx, ssid in results:
-    #     semantic_sets[idx] = ssid
-    for s in sequences:
-        idx, ssid = process_sequence(s)
+    results = Parallel(n_jobs=10, prefer='threads')(delayed(process_sequence)(s) for s in sequences)
+    for idx, ssid in results:
         semantic_sets[idx] = ssid
+    # for s in sequences:
+    #     idx, ssid = process_sequence(s)
+    #     semantic_sets[idx] = ssid
     
 
-with open(f'./data/{MODEL}_{ENTAILMENT}_semantic_similarity.pkl', 'wb') as outfile:
+with open(f'./data/{MODEL}_{ENTAILMENT}_reas={args.reasoning}_temp={args.temp}_semantic_similarity.pkl', 'wb') as outfile:
     pickle.dump(semantic_sets, outfile)

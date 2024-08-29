@@ -12,18 +12,21 @@ parser = argparse.ArgumentParser(
                     description='Script 3: Measure semantic uncertainty (entropy), discrete SE, and perplexity',
                     epilog='')
 
-parser.add_argument('model', default="openai", type=str,
+parser.add_argument('--model', default="openai", type=str,
                     choices=["openai"])     
 
-parser.add_argument('entailment', default="gpt", type=str,
+parser.add_argument('--temp', default=1.0, type=float)     
+
+parser.add_argument('--reasoning', action='store_true')     
+
+parser.add_argument('--entailment', default="gpt", type=str,
                     choices=["gpt", "deberta"])     
 
-parser.add_argument('agg', default="original", type=str,
+parser.add_argument('--agg', default="original", type=str,
                     choices=["sum_normalized", "original"])     
 
 args = parser.parse_args()
 
-# TODO implement multiple model logic here, for now just openai
 MODEL = args.model
 ENTAILMENT = args.entailment
 
@@ -160,10 +163,10 @@ def compute_perplexity(perplexity, semantic_ids) -> tuple[float, bool]:
 
     return perplexity.min(), correct_answer
 
-with open(f'./data/{MODEL}_generations.pkl', 'rb') as infile:
+with open(f'./data/{MODEL}_temp={args.temp}_reasoning={args.reasoning}_generations.pkl', 'rb') as infile:
     sequences = pickle.load(infile)
 
-with open(f'./data/{MODEL}_{ENTAILMENT}_semantic_similarity.pkl', 'rb') as infile:
+with open(f'./data/{MODEL}_{ENTAILMENT}_reas={args.reasoning}_temp={args.temp}_semantic_similarity.pkl', 'rb') as infile:
     semantic_set_ids = pickle.load(infile)
 
 final_results = dict(
@@ -215,5 +218,5 @@ for sequence in sequences:
     final_results["perplexity_correct"].append(perplexity_correct)
     print(f"e:{entropy:.2f} ed:{entropy_discrete:.2f} s:{sets} sd:{sets_disc}")
     
-with open(f'./data/{MODEL}_{ENTAILMENT}_{args.agg}_final_results.pkl', 'wb') as outfile:
+with open(f'./data/{MODEL}_{ENTAILMENT}_temp={args.temp}_reas={args.reasoning}_agg={args.agg}_final_results.pkl', 'wb') as outfile:
     pickle.dump(final_results, outfile)
