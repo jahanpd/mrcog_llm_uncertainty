@@ -2,27 +2,41 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import RocCurveDisplay
 from tabulate import tabulate
+from pydantic import BaseModel
+from typing import Optional
+from enum import Enum
+
+class Entail(Enum):
+    GPT = 0
+    DEBERTA = 1
+
+class Result(BaseModel):
+    temp: float
+    reasoning: bool
+    entailment: Entail
+    confidence: Optional[dict] = None
+    correctness: Optional[dict] = None
 
 def rocs_from_results(results_array, axes, titles):
     for results, ax, title in zip(results_array, axes, titles):
 
         sement = RocCurveDisplay.from_predictions(
-            np.array(results["entropy_correct"]).astype(np.float32),
-            -1*np.array(results["entropy"]),
+            np.array([r["cluster_correct_strict"] for r in results.correctness]).astype(np.float32),
+            -1*np.array([r["entropy"] for r in results.confidence]),
             ax=ax,
             color="red",
             name="Semantic Uncertainty"
         )
         discent = RocCurveDisplay.from_predictions(
-            np.array(results["dentropy_correct"]).astype(np.float32),
-            -1*np.array(results["dentropy"]),
+            np.array([r["cluster_correct_strict"] for r in results.correctness]).astype(np.float32),
+            -1*np.array([r["dentropy"] for r in results.confidence]),
             ax=ax,
             color="orange",
             name="Discrete Semantic Uncertainty"
         )
         perp = RocCurveDisplay.from_predictions(
-            np.array(results["perplexity_correct"]).astype(np.float32),
-            -1*np.array(results["perplexity"]),
+            np.array([r["perplexity_correct"] for r in results.correctness]).astype(np.float32),
+            -1*np.array([r["perplexity"] for r in results.confidence]),
             ax=ax,
             color="green",
             name="Perplexity"
@@ -30,12 +44,12 @@ def rocs_from_results(results_array, axes, titles):
 
         ax.set_title(title)
 
-def su_rocs_from_results(results_array, ax, titles, main_title=""):
+def su_rocs_from_results(results_array: list[Result], ax, titles, main_title=""):
     for results, title in zip(results_array, titles):
 
         _ = RocCurveDisplay.from_predictions(
-            np.array(results["entropy_correct"]).astype(np.float32),
-            -1*np.array(results["entropy"]),
+            np.array([r["cluster_correct_strict"] for r in results.correctness]).astype(np.float32),
+            -1*np.array([r["entropy"] for r in results.confidence]),
             ax=ax,
             name=title
         )
