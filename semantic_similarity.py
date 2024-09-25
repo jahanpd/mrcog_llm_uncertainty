@@ -37,8 +37,6 @@ if args.entailment == "deberta":
         print("id ", s['id'], "deberta")
         question = s["question"]
         answers = s["generated_answers"]
-        # add the true answer to index 0
-        answers.insert(0, s["true_answer"])
         # base semantic set 
         semantic_set_ids: SemanticSet = {}
         for idx, answer in enumerate(answers):
@@ -73,8 +71,6 @@ if args.entailment == "gpt":
         print("id ", s['id'], "gpt")
         question = s["question"]
         answers = s["generated_answers"]
-        # add the true answer to index 0
-        answers.insert(0, s["true_answer"])
         # base semantic set 
         semantic_set_ids: SemanticSet = {}
         for idx, answer in enumerate(answers):

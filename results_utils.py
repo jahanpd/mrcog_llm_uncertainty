@@ -6,6 +6,7 @@ import pandas as pd
 from typing import Optional
 from roc import *
 from sklearn.metrics import roc_auc_score
+import itertools
 
 class Entail(Enum):
     GPT = 0
@@ -15,35 +16,57 @@ class Result(BaseModel):
     temp: float
     reasoning: bool
     entailment: Entail
-    data: Optional[dict] = None
-    part1: Optional[dict] = None
-    part2: Optional[dict] = None
+    confidence: Optional[list[dict]] = None
+    correctness: Optional[list[dict]] = None
 
 class Results:
     def __init__(self, results: list[Result], dataset_path="./Jahan_Subset_v2.csv"):
         assert len(results) > 0
 
+        questions = pd.read_csv(dataset_path)
+        self.questions = questions
+        self.parts = {
+            "part1": self.check_part1,
+            "part2" : self.check_part2,
+            "full" : lambda x: True,
+            }
+
         for r in results:
-            path = f'./data/openai_{self.entail_str(r.entailment)}_temp={r.temp}_reas={r.reasoning}_agg=original_final_results.pkl'
+            path = f'./data/openai_{self.entail_str(r.entailment)}_temp={r.temp}_reas={r.reasoning}_agg=original_confidence.pkl'
             print(path)
             with open(path, 'rb') as infile:
                 res = pickle.load(infile)
-                r.data = res
-                self.get_parts(r, dataset_path=dataset_path)
+                r.confidence = [item for item in res if self.check_table(item["ids"])]
+
+            path = f'./data/openai_{self.entail_str(r.entailment)}_temp={r.temp}_reas={r.reasoning}_correctness.pkl'
+            print(path)
+            with open(path, 'rb') as infile:
+                res = pickle.load(infile)
+                print(res)
+                r.correctness = [item for item in res if self.check_table(item["id"])]
 
         self.results: list[Result] = results
-
 
     def entail_str(self, entail: Entail):
         return "gpt" if entail == Entail.GPT else "deberta"
     
-    def dlld(self, DL): 
-        """ Convert a dict of lists to list of dicts """
-        return [dict(zip(DL,t)) for t in zip(*DL.values())]
+    def check_table(self, id):
+        try:
+            return bool(self.questions.loc[id[0], :].isnull().Table)
+        except:
+            return bool(self.questions.loc[id, :].isnull().Table)
+    
+    def check_part1(self, id):
+        try:
+            return self.questions.loc[id[0], :].Part == "One"
+        except:
+            return self.questions.loc[id, :].Part == "One"
 
-    def lddl(self, LD): 
-        """ Convert a list of dicts to dict of lists """
-        return {k: [dic[k] for dic in LD] for k in LD[0]}
+    def check_part2(self, id):
+        try:
+            return self.questions.loc[id[0], :].Part == "Two"
+        except:
+            return self.questions.loc[id, :].Part == "Two"
 
     def filter_results(self, 
             temp=[0.2, 1.0, 1.1], 
@@ -53,57 +76,55 @@ class Results:
         names = [f'Temp={r.temp}|Reasoning={r.reasoning}|entailed with {self.entail_str(r.entailment)}' for r in filter]
         return filter, names
 
-    def get_parts(self, result: Result, dataset_path):
-        questions = pd.read_csv(dataset_path)
-        part1 = ['part 1' in x.lower() for x in questions.Source]
-        part2 = ['part 2' in x.lower() for x in questions.Source]
-
-        result.part1 = self.lddl([res for inc, res in zip(part1, self.dlld(result.data)) if inc])
-        result.part2 = self.lddl([res for inc, res in zip(part2, self.dlld(result.data)) if inc])
-
-
     def get_results_df(self):
         df = {
             "temp": [],
             "reasoning": [],
             "entailment": [],
             "metric": [],
+            "correctness": [],
             "part": [],
             "acc": [],
             "auc": [],
         }
         metrics = ['entropy', 'dentropy', 'perplexity']
+        part = ['full', 'part1', 'part2']
+        correct_definition = ['cluster_correct_strict', 'cluster_correct_relaxed']
+
+        combinations = list(itertools.product(metrics, part, correct_definition))
         for r in self.results:
-            part = [('full', r.data), ('part1', r.part1), ('part2', r.part2)]
-            for pname, p in part:
-                for m in metrics:
-                    try:
-                        acc = self.accuracy(p, m)
-                        auc = self.auroc(p, m)
-                        df["temp"].append(r.temp)
-                        df["reasoning"].append(r.reasoning)
-                        df["entailment"].append(r.entailment)
-                        df["metric"].append(m)
-                        df["part"].append(pname)
-                        df["acc"].append(acc)
-                        df["auc"].append(auc)
-                    except:
-                        print(r)
-        return pd.DataFrame(df)
+            for mname, pname, cname in combinations:
+                if mname == 'perplexity':
+                    cname = 'perplexity_correct'
+                p = ([item[mname] for item in r.confidence if self.parts[pname](item["ids"]) ],
+                    [item[cname] for item in r.correctness if self.parts[pname](item["id"])])
+                try:
+                    acc = self.accuracy(p[1])
+                    auc = self.auroc(p[0], p[1])
+                    df["temp"].append(r.temp)
+                    df["reasoning"].append(r.reasoning)
+                    df["entailment"].append(r.entailment)
+                    df["metric"].append(mname)
+                    df["correctness"].append(cname)
+                    df["part"].append(pname)
+                    df["acc"].append(acc)
+                    df["auc"].append(auc)
+                except:
+                    print(r)
+        return pd.DataFrame(df).drop_duplicates()
 
 
     
-    def accuracy(self, data: dict, metric: str):
-        arr = np.array(data[f'{metric}_correct']).astype(np.float32)
+    def accuracy(self, correct):
+        arr = np.array(correct).astype(np.float32)
         return arr.sum() / arr.shape[0]
 
-    def auroc(self, data: dict, metric: str):
+    def auroc(self, score, correct):
         auc = roc_auc_score(
-            np.array(data[f'{metric}_correct']).astype(np.float32),
-            -1*np.array(data[f'{metric}']).astype(np.float32)
+            np.array(correct).astype(np.float32),
+            -1*np.array(score).astype(np.float32)
         )
         return auc
-
 
     def plot_aurocs_sem_ent_full_gpt(self):
         """Plot AUROC curves for Semantic Uncertainty subset by LLM entailment"""
@@ -113,7 +134,7 @@ class Results:
 
         _, (ax1) = plt.subplots(1, 1, figsize=(8, 8))
         su_rocs_from_results(
-            [r.data for r in res], 
+            res, 
             ax1,
             names,
             "All SE Across Variables"
@@ -130,7 +151,7 @@ class Results:
 
         _, (ax1) = plt.subplots(1, 1, figsize=(8, 8))
         rocs_from_results(
-            results_array=[r.data for r in res],
+            results_array=res,
             axes=[ax1 for _ in range(len(res))],
             titles=names
         )

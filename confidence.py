@@ -30,41 +30,6 @@ args = parser.parse_args()
 MODEL = args.model
 ENTAILMENT = args.entailment
 
-# the original papers metric
-# https://github.com/lorenzkuhn/semantic_uncertainty/blob/20e0ee1388e776e48c1ee285e00462aabc6cf35a/code/compute_confidence_measure.py#L123
-def compute_semantic_uncertainty_original(
-        log_likelihoods: list[list[float]], 
-        semantic_set_ids: dict[int,int]
-        ) -> tuple[float, bool, int]:
-    
-    # length normalisation
-    # [logsumexp(loglik - log(length)) ...]
-    avg_likelihoods = torch.tensor([
-        torch.logsumexp(torch.tensor(ls), dim=0) - torch.log(torch.tensor(len(ls)))
-        for ls in log_likelihoods
-        ]) # tensor of shape (number of generations,)
-
-    # exludes true value
-    semantic_set = torch.tensor([value for key, value in semantic_set_ids.items() if key != 0])
-    # with true value
-    semantic_set_w = torch.tensor([value for key, value in semantic_set_ids.items()])
-    C = torch.unique(semantic_set_w).shape[0] # number of sets
-    sets, counts = torch.unique(semantic_set_w, return_counts=True) # counts for each set
-    correct_answer = sets[counts.argmax()] == 0
-    aggregated_likelihoods = []
-    for set_id in torch.unique(semantic_set):
-        # logsumexp for each unique set
-        ag = torch.logsumexp(avg_likelihoods[semantic_set == set_id], dim=0)
-        aggregated_likelihoods.append(
-                ag
-                )
-    print(C)
-    aggregated_likelihoods = torch.tensor(aggregated_likelihoods) - 5
-    # assert C == aggregated_likelihoods.shape[0], f"{C} {aggregated_likelihoods.shape[0]}"
-    entropy = -torch.sum(aggregated_likelihoods) / aggregated_likelihoods.shape[0]
-    return (entropy, correct_answer, sets.shape[0])
-
-
 def logsumexp_by_id(
         semantic_ids: dict[int, int], 
         log_likelihoods: list[float], 
@@ -76,16 +41,15 @@ def logsumexp_by_id(
     """
     # https://github.com/jlko/semantic_uncertainty/blob/a8d9aa8cecd5f3bec09b19ae38ab13552e0846f4/semantic_uncertainty/uncertainty/uncertainty_measures/semantic_entropy.py#L208
     # note that semantic_set_id 0 is the true answer
-    assert len(log_likelihoods) == (len(semantic_ids) - 1), f"{len(log_likelihoods)} vs {len(semantic_ids)}" # semantic sets include true answer
+    assert len(log_likelihoods) == len(semantic_ids), f"{len(log_likelihoods)} vs {len(semantic_ids)}" # semantic sets include true answer
     log_likelihood_per_semantic_id = []
     # need to filter out the true answer as no logliks for it, has poisiton/id 0
-    unique_ids = sorted(list(set([val for key, val in semantic_ids.items() if key != 0])))
+    unique_ids = sorted(list(set([val for key, val in semantic_ids.items()])))
     for uid in unique_ids:
         # Find positions in `semantic_ids` which belong to the active `uid`.
-        # position 0 in dict is the true answer, and not in the log prop array
-        id_indices = [pos - 1 for pos, x in semantic_ids.items() if x == uid]
+        id_indices = [pos for pos, x in semantic_ids.items() if x == uid]
         # Gather mean log likelihoods at these indices.
-        id_log_likelihoods = [log_likelihoods[i] for i in id_indices if i > -1] # list[float]
+        id_log_likelihoods = [log_likelihoods[i] for i in id_indices] # list[float]
         if agg == 'sum_normalized':
             # log_lik_norm = id_log_likelihoods - np.prod(log_likelihoods)
             log_lik_norm = np.array(id_log_likelihoods) - np.log(np.sum(np.exp(log_likelihoods)))
@@ -106,7 +70,7 @@ def categorical_empirical_loglik(
     """ Calculate counts for each set.
 
     Return logprob of each set"""
-    unique, counts = np.unique([val for key, val in semantic_ids.items() if key != 0], return_counts=True)
+    unique, counts = np.unique([val for key, val in semantic_ids.items()], return_counts=True)
     return [np.log(c/np.sum(counts)) for c in counts], unique
     
 
@@ -138,30 +102,12 @@ def compute_semantic_uncertainty(
     pe_continuous = predictive_entropy_rao(log_likelihood_per_semantic_id)
     pe_discrete = predictive_entropy_rao(log_likelihood_per_semantic_id_discrete)
 
-    correct_continuous = 0 == unique_ids_cont[np.argmax(log_likelihood_per_semantic_id)]
-    # check for ties
-    if correct_continuous:
-        if np.sum([log_likelihood_per_semantic_id[0] == x for x in log_likelihood_per_semantic_id]) > 1:
-            print("continuous tie detected")
-            correct_continuous = False
-    correct_discrete = 0 == unique_ids_disc[np.argmax(log_likelihood_per_semantic_id_discrete)]
-    # check for ties
-    if correct_discrete:
-        if np.sum([log_likelihood_per_semantic_id_discrete[0] == x for x in log_likelihood_per_semantic_id_discrete]) > 1:
-            print("discrete tie detected")
-            correct_discrete = False
+    return (pe_continuous, pe_discrete, len(unique_ids_cont), len(unique_ids_disc))
 
-    # assert correct_continuous == correct_discrete, f"cont: {correct_continuous}, dis: {correct_discrete} {log_likelihood_per_semantic_id_discrete} {log_likelihood_per_semantic_id}"
-
-    return (pe_continuous, pe_discrete, correct_continuous, correct_discrete, len(unique_ids_cont), len(unique_ids_disc))
-
-def compute_perplexity(perplexity, semantic_ids) -> tuple[float, bool]:
-    semantic_set = torch.tensor([value for key, value in semantic_ids.items() if key != 0])
+def compute_perplexity(perplexity) -> float:
     perplexity = torch.tensor(perplexity).clamp(0.0, 1000000.0)
-    lowest_perp_set = semantic_set[perplexity.argmin()]
-    correct_answer = lowest_perp_set == 0
 
-    return perplexity.min(), correct_answer
+    return float(perplexity.min())
 
 with open(f'./data/{MODEL}_temp={args.temp}_reasoning={args.reasoning}_generations.pkl', 'rb') as infile:
     sequences = pickle.load(infile)
@@ -169,20 +115,8 @@ with open(f'./data/{MODEL}_temp={args.temp}_reasoning={args.reasoning}_generatio
 with open(f'./data/{MODEL}_{ENTAILMENT}_reas={args.reasoning}_temp={args.temp}_semantic_similarity.pkl', 'rb') as infile:
     semantic_set_ids = pickle.load(infile)
 
-final_results = dict(
-        ids = [],
-        entropy = [],
-        dentropy = [],
-        og_entropy = [],
-        entropy_correct = [],
-        dentropy_correct = [],
-        og_entropy_correct = [],
-        sets = [],
-        dsets = [],
-        og_sets = [],
-        perplexity = [],
-        perplexity_correct = []
-        )
+final_results = []
+
 for sequence in sequences:
     log_likelihoods = sequence['generated_logprobs']
     semantic_set = semantic_set_ids[sequence['id']] # dict[id, id]
@@ -194,29 +128,22 @@ for sequence in sequences:
     # 4. the lowest perplexity 
     # 5. if the lowest perplexity answer is in the same set as the correct answer - aka correct
 
-    og_entropy, og_ent_correct, og_sets = compute_semantic_uncertainty_original(
-        log_likelihoods,
-        semantic_set,
-    )
-    entropy, entropy_discrete, entropy_correct, dentropy_correct, sets, sets_disc = compute_semantic_uncertainty(
+    entropy, entropy_discrete, sets, sets_disc = compute_semantic_uncertainty(
             log_likelihoods, 
             semantic_set,
             agg=args.agg
             )
-    perplexity, perplexity_correct = compute_perplexity(sequence['generated_perplexity'], semantic_set) 
-    final_results["ids"].append(sequence['id'])
-    final_results["entropy"].append(entropy)
-    final_results["og_entropy"].append(og_entropy)
-    final_results["dentropy"].append(entropy_discrete)
-    final_results["entropy_correct"].append(entropy_correct)
-    final_results["og_entropy_correct"].append(og_ent_correct)
-    final_results["dentropy_correct"].append(dentropy_correct)
-    final_results["sets"].append(sets)
-    final_results["dsets"].append(sets)
-    final_results["og_sets"].append(sets)
-    final_results["perplexity"].append(perplexity)
-    final_results["perplexity_correct"].append(perplexity_correct)
+    perplexity = compute_perplexity(sequence['generated_perplexity']) 
+
+    final_results.append(dict(
+        ids = sequence['id'],
+        entropy = entropy,
+        dentropy = entropy_discrete,
+        sets = sets,
+        dsets = sets,
+        perplexity = perplexity,
+        ))
     print(f"e:{entropy:.2f} ed:{entropy_discrete:.2f} s:{sets} sd:{sets_disc}")
     
-with open(f'./data/{MODEL}_{ENTAILMENT}_temp={args.temp}_reas={args.reasoning}_agg={args.agg}_final_results.pkl', 'wb') as outfile:
+with open(f'./data/{MODEL}_{ENTAILMENT}_temp={args.temp}_reas={args.reasoning}_agg={args.agg}_confidence.pkl', 'wb') as outfile:
     pickle.dump(final_results, outfile)
