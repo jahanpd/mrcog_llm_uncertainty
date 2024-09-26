@@ -42,7 +42,6 @@ class Results:
             print(path)
             with open(path, 'rb') as infile:
                 res = pickle.load(infile)
-                print(res)
                 r.correctness = [item for item in res if self.check_table(item["id"])]
 
         self.results: list[Result] = results
