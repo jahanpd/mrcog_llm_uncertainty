@@ -93,7 +93,7 @@ def get_llm_entailement_response(prompt):
         logging.warning(binary_response)
         return 1
 
-def get_gpt_entailment(question, text1, text2, strict=False) -> bool:
+def get_gpt_entailment(question, text1, text2, strict=True) -> bool:
     forward = get_llm_entailement_response(gpt_entailment_prompt(question, text1, text2))
     reverse = get_llm_entailement_response(gpt_entailment_prompt(question, text2, text1))
 
