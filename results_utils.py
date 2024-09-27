@@ -16,6 +16,7 @@ class Result(BaseModel):
     temp: float
     reasoning: bool
     entailment: Entail
+    checker: Entail
     confidence: Optional[list[dict]] = None
     correctness: Optional[list[dict]] = None
 
@@ -38,7 +39,7 @@ class Results:
                 res = pickle.load(infile)
                 r.confidence = [item for item in res if self.check_table(item["ids"])]
 
-            path = f'./data/openai_{self.entail_str(r.entailment)}_temp={r.temp}_reas={r.reasoning}_correctness.pkl'
+            path = f'./data/openai_{self.entail_str(r.entailment)}_temp={r.temp}_reas={r.reasoning}_checker={self.entail_str(r.checker)}_correctness.pkl'
             print(path)
             with open(path, 'rb') as infile:
                 res = pickle.load(infile)
@@ -80,6 +81,7 @@ class Results:
             "temp": [],
             "reasoning": [],
             "entailment": [],
+            "checker": [],
             "metric": [],
             "correctness": [],
             "part": [],
@@ -103,6 +105,7 @@ class Results:
                     df["temp"].append(r.temp)
                     df["reasoning"].append(r.reasoning)
                     df["entailment"].append(r.entailment)
+                    df["checker"].append(r.checker)
                     df["metric"].append(mname)
                     df["correctness"].append(cname)
                     df["part"].append(pname)

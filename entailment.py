@@ -13,12 +13,6 @@ logging.basicConfig(filename= f'./logs/entailment-{datetime.now().isoformat()}.l
 tokenizer = AutoTokenizer.from_pretrained("microsoft/deberta-v2-xlarge-mnli")
 model = AutoModelForSequenceClassification.from_pretrained("microsoft/deberta-v2-xlarge-mnli").cuda()
 
-"""
-The semantic_similarity.py script will use the above output and create a pkl of a dict:
-    {
-        '{id}': semantic_set_ids
-    }
-"""
 def check_deberta_bidirectional(phrase1, phrase2) -> int:
     inputs = tokenizer(phrase1, phrase2, return_tensors="pt").to('cuda')
     # The model checks if text1 -> text2, i.e. if text2 follows from text1.
@@ -36,7 +30,7 @@ def deberta_prompt(question, answer):
     return f'''Question: {question}
 Answer: {answer}'''
 
-def get_deberta_entailment(question, phrase1, phrase2, strict=False) -> bool:
+def get_deberta_entailment(question, phrase1, phrase2, strict=True) -> bool:
     forward = check_deberta_bidirectional(
         deberta_prompt(question, phrase1), deberta_prompt(question, phrase2))
     reverse = check_deberta_bidirectional(
