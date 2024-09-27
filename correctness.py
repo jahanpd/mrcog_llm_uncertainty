@@ -1,6 +1,6 @@
 import pickle
 import argparse
-from entailment import get_gpt_entailment
+from entailment import get_gpt_entailment, get_deberta_entailment
 import numpy as np
 from joblib import Parallel, delayed
 
@@ -19,6 +19,9 @@ parser.add_argument('--reasoning', action='store_true')
 parser.add_argument('--entailment', default="gpt", type=str,
                     choices=["gpt", "deberta"])     
 
+parser.add_argument('--checker', default="gpt", type=str,
+                    choices=["gpt", "deberta"])     
+
 args = parser.parse_args()
 
 with open(f'./data/{args.model}_temp={args.temp}_reasoning={args.reasoning}_generations.pkl', 'rb') as infile:
@@ -28,6 +31,12 @@ with open(f'./data/{args.model}_{args.entailment}_reas={args.reasoning}_temp={ar
     semantic_set_ids = pickle.load(infile)
 
 collected_correctness = []
+
+if args.checker == "gpt":
+    ENTAILER = get_gpt_entailment
+else:
+    ENTAILER = get_deberta_entailment
+
 
 def process_sequence(s):
     print(s["id"])
@@ -47,12 +56,20 @@ def process_sequence(s):
 
     cluster_correct_strict = False
     cluster_correct_relaxed = False
+    cluster_correct_majority = False
+    cluster_correct_lowest = False
+
+    # check lowest perplexity answer entailment
+    lowest_perp_answer = answers[np.argmin(perplexity)]
+    perplexity_correct = ENTAILER(question, lowest_perp_answer, true_answer)
 
     if len(labels) == 1:
         # check true answer against all answers
-        entailed = [get_gpt_entailment(question, answer, true_answer) for answer in answers]
+        entailed = [ENTAILER(question, answer, true_answer) for answer in answers]
         cluster_correct_strict = np.all(entailed)
         cluster_correct_relaxed = np.any(entailed)
+        cluster_correct_majority = (np.sum(entailed) / len(entailed)) > 0.5
+        cluster_correct_lowest = perplexity_correct # true when there is only one semantic group
     else:
         # check for a tie in largest label clusters
         if label_counts[0] == label_counts[1]:
@@ -60,17 +77,25 @@ def process_sequence(s):
             pass
         else:
             answer_subset = [a for a, l in zip(answers, answer_labels) if l == labels[0]]
-            entailed = [get_gpt_entailment(question, answer, true_answer) for answer in answer_subset]
+            perplexity_subset = [a for a, l in zip(perplexity, answer_labels) if l == labels[0]]
+            entailed = [ENTAILER(question, answer, true_answer) for answer in answer_subset]
             cluster_correct_strict = np.all(entailed)
             cluster_correct_relaxed = np.any(entailed)
+            cluster_correct_majority = (np.sum(entailed) / len(entailed)) > 0.5
+            
+            # check lowest perplexity answer in largest group
+            lowest_perp_answer = answer_subset[np.argmin(perplexity_subset)]
+            cluster_correct_lowest = ENTAILER(question, lowest_perp_answer, true_answer)
 
     # check lowest perplexity answer entailment
     lowest_perp_answer = answers[np.argmin(perplexity)]
-    perplexity_correct = get_gpt_entailment(question, lowest_perp_answer, true_answer)
+    perplexity_correct = ENTAILER(question, lowest_perp_answer, true_answer)
     return dict(
         id=idx,
         cluster_correct_strict=cluster_correct_strict,
         cluster_correct_relaxed=cluster_correct_relaxed,
+        cluster_correct_majority=cluster_correct_majority,
+        cluster_correct_lowest=cluster_correct_lowest,
         perplexity_correct=perplexity_correct,
         question=question,
         answers=answers,
@@ -84,6 +109,6 @@ for r in results:
     collected_correctness.append(r)
 
 
-with open(f'./data/{args.model}_{args.entailment}_temp={args.temp}_reas={args.reasoning}_correctness.pkl', 'wb') as outfile:
+with open(f'./data/{args.model}_{args.entailment}_temp={args.temp}_reas={args.reasoning}_checker={args.checker}_correctness.pkl', 'wb') as outfile:
     pickle.dump(collected_correctness, outfile)
 

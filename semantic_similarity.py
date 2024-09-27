@@ -57,7 +57,7 @@ if args.entailment == "deberta":
                             question,
                             string1,
                             answers[j],
-                            strict=False
+                            strict=True
                             )
                     if entailed:
                         semantic_set_ids[j] = semantic_set_ids[i]
@@ -91,7 +91,7 @@ if args.entailment == "gpt":
                             question,
                             string1,
                             answers[j],
-                            strict=False
+                            strict=True
                             )
                     if entailed:
                         semantic_set_ids[j] = semantic_set_ids[i]
