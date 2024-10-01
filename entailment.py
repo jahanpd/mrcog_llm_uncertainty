@@ -5,6 +5,7 @@ from openai import OpenAI
 import os
 import logging
 from datetime import datetime
+from pydantic import BaseModel
 
 logger = logging.getLogger("")
 logging.basicConfig(filename= f'./logs/entailment-{datetime.now().isoformat()}.log', encoding='utf-8', level=logging.INFO)
@@ -68,8 +69,8 @@ def get_llm_entailement_response(prompt):
                 "content": prompt,
             }
         ],
-        model="gpt-4o-mini",
-        temperature=0.02,
+        model="gpt-4o",
+        temperature=0.0,
         max_tokens=200,
     )
 
@@ -100,9 +101,53 @@ def get_gpt_entailment(question, text1, text2, strict=True) -> bool:
 
     return semantically_equivalent
 
+def gpt_oneshot_entailment_prompt(question, texts):
+    prompt = f"""You are an expert senior obstetrics and gynaecology doctor evaluating the semantic similarity of answers to the following question \"{question}\"\n"""
+    prompt += "Here are the possible answers:\n"
+    for idx, text in enumerate(texts):
+         prompt += f"""{idx}. {text}\n"""
+
+    prompt += "Please cluster the answers according to their semantic similarity (entailment).\n"""
+    prompt += "When considering the semantics of each answer, please consider the context of the question.\n"""
+    return prompt
 
 
+class AnswerIndex(BaseModel):
+    index: int
 
-# test = check_bidirectional_entailment('capital of france is paris', 
-                                    #   'the main city of governance for the french people is paris')
-# print(test)
+class Cluster(BaseModel):
+    cluster: list[AnswerIndex] 
+
+class Clusters(BaseModel):
+    clusters: list[Cluster]
+
+
+def get_oneshot_llm_entailement_response(prompt):
+    chat_completion = client.beta.chat.completions.parse(
+        messages=[
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        model="gpt-4o",
+        temperature=0.0,
+        max_tokens=1280,
+        response_format=Clusters
+    )
+
+    clusters: Clusters = chat_completion.choices[0].message.parsed 
+    print("straight up", clusters)
+    return clusters
+
+
+def get_oneshot_gpt_entailment(question, answers) -> dict:
+    prompt = gpt_oneshot_entailment_prompt(question, answers)
+    clusters = get_oneshot_llm_entailement_response(prompt)
+    cluster_dict = {}
+    for cidx, cluster in enumerate(clusters.clusters):
+        for aidx in cluster.cluster:
+            cluster_dict[aidx.index] = cidx
+
+    return cluster_dict
+

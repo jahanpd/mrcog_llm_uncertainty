@@ -19,6 +19,8 @@ parser.add_argument('--temp', default=1.0, type=float)
 
 parser.add_argument('--reasoning', action='store_true')     
 
+parser.add_argument('--oneshot', action='store_true')     
+
 parser.add_argument('--entailment', default="gpt", type=str,
                     choices=["gpt", "deberta"])     
 
@@ -112,7 +114,7 @@ def compute_perplexity(perplexity) -> float:
 with open(f'./data/{MODEL}_temp={args.temp}_reasoning={args.reasoning}_generations.pkl', 'rb') as infile:
     sequences = pickle.load(infile)
 
-with open(f'./data/{MODEL}_{ENTAILMENT}_reas={args.reasoning}_temp={args.temp}_semantic_similarity.pkl', 'rb') as infile:
+with open(f'./data/{MODEL}_{ENTAILMENT}_oneshot={args.oneshot}_reas={args.reasoning}_temp={args.temp}_semantic_similarity.pkl', 'rb') as infile:
     semantic_set_ids = pickle.load(infile)
 
 final_results = []

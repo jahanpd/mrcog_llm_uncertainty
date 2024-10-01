@@ -3,6 +3,7 @@ import os
 from enum import Enum
 import pickle
 import pandas as pd
+import numpy as np
 from typing import Optional
 from roc import *
 from sklearn.metrics import roc_auc_score
@@ -15,11 +16,13 @@ class Entail(Enum):
 class Result(BaseModel):
     temp: float
     reasoning: bool
+    oneshot: bool
     entailment: Entail
     checker: Entail
     confidence: Optional[list[dict]] = None
     correctness: Optional[list[dict]] = None
     category: Optional[list[str]] = None
+    length: Optional[list[float]] = None
 
 class Results:
     def __init__(self, results: list[Result], dataset_path="./Jahan_Subset_v2.csv"):
@@ -30,17 +33,21 @@ class Results:
         self.parts = {
             "part1": self.check_part1,
             "part2" : self.check_part2,
-            "full" : lambda x: True,
+            "knowledge": self.check_knowledge,
+            "reasoning": self.check_reasoning,
+            "short": self.check_short,
+            "long": self.check_long,
+            "full" : lambda x, *args: True,
             }
 
         for r in results:
-            path = f'./data/openai_{self.entail_str(r.entailment)}_temp={r.temp}_reas={r.reasoning}_agg=original_confidence.pkl'
+            path = f'./data/openai_{self.entail_str(r.entailment)}_oneshot={r.oneshot}_temp={r.temp}_reas={r.reasoning}_agg=original_confidence.pkl'
             print(path)
             with open(path, 'rb') as infile:
                 res = pickle.load(infile)
                 r.confidence = [item for item in res if self.check_table(item["ids"])]
 
-            path = f'./data/openai_{self.entail_str(r.entailment)}_temp={r.temp}_reas={r.reasoning}_checker={self.entail_str(r.checker)}_correctness.pkl'
+            path = f'./data/openai_{self.entail_str(r.entailment)}_oneshot={r.oneshot}_temp={r.temp}_reas={r.reasoning}_checker={self.entail_str(r.checker)}_correctness.pkl'
             print(path)
             with open(path, 'rb') as infile:
                 res = pickle.load(infile)
@@ -51,29 +58,43 @@ class Results:
             with open(path, 'rb') as infile:
                 res = pickle.load(infile)
                 r.category = [item["category"] for item in res if self.check_table(item["id"])]
+                r.length = [np.mean([len(x) for x in item["generated_answers"]]) for item in res if self.check_table(item["id"])]
+                print(min(r.length), np.mean(r.length), max(r.length))
 
         self.results: list[Result] = results
 
     def entail_str(self, entail: Entail):
         return "gpt" if entail == Entail.GPT else "deberta"
     
-    def check_table(self, id):
+    def check_table(self, id, *args):
         try:
             return bool(self.questions.loc[id[0], :].isnull().Table)
         except:
             return bool(self.questions.loc[id, :].isnull().Table)
     
-    def check_part1(self, id):
+    def check_part1(self, id, *args):
         try:
             return self.questions.loc[id[0], :].Part == "One"
         except:
             return self.questions.loc[id, :].Part == "One"
 
-    def check_part2(self, id):
+    def check_part2(self, id, *args):
         try:
             return self.questions.loc[id[0], :].Part == "Two"
         except:
             return self.questions.loc[id, :].Part == "Two"
+    
+    def check_knowledge(self, id, *args):
+        return args[0] == "knowledge"
+
+    def check_reasoning(self, id, *args):
+        return args[0] == "reasoning"
+    
+    def check_short(self, id, *args):
+        return args[1] < 15
+
+    def check_long(self, id, *args):
+        return args[1] > 60
 
     def filter_results(self, 
             temp=[0.2, 1.0, 1.1], 
@@ -96,22 +117,18 @@ class Results:
             "auc": [],
         }
         metrics = ['entropy', 'dentropy', 'perplexity']
-        part = ['full', 'part1', 'part2']
-        category = ['full', 'knowledge', 'reasoning']
+        part = ['full', 'part1', 'part2', 'knowledge', 'reasoning', 'short', 'long']
         correct_definition = ['cluster_correct_strict', 'cluster_correct_relaxed', 'cluster_correct_majority', 'cluster_correct_lowest']
 
-        combinations = list(itertools.product(metrics, part, correct_definition, category))
+        combinations = list(itertools.product(metrics, part, correct_definition))
         for r in self.results:
-            for mname, pname, cname, catname in combinations:
-                print(mname, pname, cname, catname)
+            for mname, pname, cname in combinations:
                 if mname == 'perplexity':
                     cname = 'perplexity_correct'
-                if catname == 'full':
-                    p = ([item[mname] for item in r.confidence if self.parts[pname](item["ids"]) ],
-                        [item[cname] for item in r.correctness if self.parts[pname](item["id"])])
-                else:
-                    p = ([item[mname] for item, cat in zip(r.confidence, r.category) if self.parts[pname](item["ids"]) and cat == catname ],
-                         [item[cname] for item, cat in zip(r.correctness, r.category) if self.parts[pname](item["id"]) and cat == catname ])
+
+                p = ([item[mname] for item, cat, length in zip(r.confidence, r.category, r.length) if self.parts[pname](item["ids"], cat, length)],
+                    [item[cname] for item, cat, length in zip(r.correctness, r.category, r.length) if self.parts[pname](item["id"], cat, length)])
+
                 try:
                     acc = self.accuracy(p[1])
                     auc = self.auroc(p[0], p[1])
@@ -122,11 +139,10 @@ class Results:
                     df["metric"].append(mname)
                     df["correctness"].append(cname)
                     df["part"].append(pname)
-                    df["category"].append(catname)
                     df["acc"].append(acc)
                     df["auc"].append(auc)
                 except:
-                    print(r)
+                    print(mname, pname, cname)
         return pd.DataFrame(df).drop_duplicates()
 
 

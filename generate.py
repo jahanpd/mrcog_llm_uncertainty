@@ -95,7 +95,7 @@ for index, row in QUESTIONS.iterrows():
         category=category,
         true_answer=true_answer,
         generated_answers=generated_answers,
-        generated_reasoning=generated_answers,
+        generated_reasoning=generated_reasoning,
         generated_logprobs=generated_logprobs,
         generated_perplexity=generated_perplexity
     )

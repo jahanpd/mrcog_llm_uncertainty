@@ -1,5 +1,5 @@
 import pickle
-from entailment import SemanticSet, get_deberta_entailment, get_gpt_entailment
+from entailment import SemanticSet, get_deberta_entailment, get_gpt_entailment, get_oneshot_gpt_entailment
 import argparse
 from joblib import Parallel, delayed
 from joblib import wrap_non_picklable_objects
@@ -15,6 +15,8 @@ parser.add_argument('--model', default="openai", type=str,
 parser.add_argument('--temp', default=1.0, type=float)     
 
 parser.add_argument('--reasoning', action='store_true')     
+
+parser.add_argument('--oneshot', action='store_true')     
 
 parser.add_argument('--entailment', default="gpt", type=str,
                     choices=["gpt", "deberta"])     
@@ -66,7 +68,7 @@ if args.entailment == "deberta":
         semantic_sets[s['id']] = semantic_set_ids
 
 
-if args.entailment == "gpt":
+if args.entailment == "gpt" and not args.oneshot:
     def process_sequence(s):
         print("id ", s['id'], "gpt")
         question = s["question"]
@@ -102,10 +104,20 @@ if args.entailment == "gpt":
     results = Parallel(n_jobs=10, prefer='threads')(delayed(process_sequence)(s) for s in sequences)
     for idx, ssid in results:
         semantic_sets[idx] = ssid
-    # for s in sequences:
-    #     idx, ssid = process_sequence(s)
-    #     semantic_sets[idx] = ssid
     
+if args.entailment == "gpt" and args.oneshot:
+    def process_sequence(s):
+        print("id ", s['id'], "gpt")
+        question = s["question"]
+        answers = s["generated_answers"]
+        # base semantic set 
 
-with open(f'./data/{MODEL}_{ENTAILMENT}_reas={args.reasoning}_temp={args.temp}_semantic_similarity.pkl', 'wb') as outfile:
+        semantic_set_ids = get_oneshot_gpt_entailment(question, answers)
+        return (s['id'], semantic_set_ids)
+
+    results = Parallel(n_jobs=10, prefer='threads')(delayed(process_sequence)(s) for s in sequences)
+    for idx, ssid in results:
+        semantic_sets[idx] = ssid
+ 
+with open(f'./data/{MODEL}_{ENTAILMENT}_oneshot={args.oneshot}_reas={args.reasoning}_temp={args.temp}_semantic_similarity.pkl', 'wb') as outfile:
     pickle.dump(semantic_sets, outfile)
