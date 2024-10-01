@@ -24,6 +24,7 @@ print(args)
 
 class Output(TypedDict):
     id: int
+    category: str
     generated_answers: list[str]
     generated_logprobs: list[list[float]]
     generated_perplexity: list[float]
@@ -71,14 +72,14 @@ for index, row in QUESTIONS.iterrows():
     generated_perplexity = []
     print("{}/{}: {}".format(index, QUESTIONS.shape[0], question))
     for i in range(GENERATIONS):
-        res_struct, res_logprobs = API_RESPONSE(
+        res_struct, res_logprobs, category = API_RESPONSE(
             question,
             reasoning=args.reasoning,
             temperature=args.temp
         )
         print(index, res_struct)
         res_ans = res_struct.short_answer
-        if args.reasoning:
+        if category == "reasoning":
             res_reas = res_struct.reasoning
         else:
             res_reas = None
@@ -91,6 +92,7 @@ for index, row in QUESTIONS.iterrows():
     output: Output = dict(
         id=id,
         question=question,
+        category=category,
         true_answer=true_answer,
         generated_answers=generated_answers,
         generated_reasoning=generated_answers,

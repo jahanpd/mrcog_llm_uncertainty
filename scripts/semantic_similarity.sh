@@ -1,14 +1,8 @@
 python semantic_similarity.py --temp 1.0 --entailment gpt
-python semantic_similarity.py --temp 1.0 --reasoning --entailment gpt
 python semantic_similarity.py --temp 0.2 --entailment gpt
-python semantic_similarity.py --temp 0.2 --reasoning --entailment gpt
 python semantic_similarity.py --temp 1.10 --entailment gpt
-python semantic_similarity.py --temp 1.10 --reasoning --entailment gpt
 
 python semantic_similarity.py --temp 1.0 --entailment deberta
-python semantic_similarity.py --temp 1.0 --reasoning --entailment deberta
 python semantic_similarity.py --temp 0.2 --entailment deberta
-python semantic_similarity.py --temp 0.2 --reasoning --entailment deberta
 python semantic_similarity.py --temp 1.10 --entailment deberta
-python semantic_similarity.py --temp 1.10 --reasoning --entailment deberta 
 

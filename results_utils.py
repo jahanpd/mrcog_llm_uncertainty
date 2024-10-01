@@ -19,6 +19,7 @@ class Result(BaseModel):
     checker: Entail
     confidence: Optional[list[dict]] = None
     correctness: Optional[list[dict]] = None
+    category: Optional[list[str]] = None
 
 class Results:
     def __init__(self, results: list[Result], dataset_path="./Jahan_Subset_v2.csv"):
@@ -44,6 +45,12 @@ class Results:
             with open(path, 'rb') as infile:
                 res = pickle.load(infile)
                 r.correctness = [item for item in res if self.check_table(item["id"])]
+
+            path = f'./data/openai_temp={r.temp}_reasoning={r.reasoning}_generations.pkl'
+            print(path)
+            with open(path, 'rb') as infile:
+                res = pickle.load(infile)
+                r.category = [item["category"] for item in res if self.check_table(item["id"])]
 
         self.results: list[Result] = results
 
@@ -90,15 +97,21 @@ class Results:
         }
         metrics = ['entropy', 'dentropy', 'perplexity']
         part = ['full', 'part1', 'part2']
-        correct_definition = ['cluster_correct_strict', 'cluster_correct_relaxed']
+        category = ['full', 'knowledge', 'reasoning']
+        correct_definition = ['cluster_correct_strict', 'cluster_correct_relaxed', 'cluster_correct_majority', 'cluster_correct_lowest']
 
-        combinations = list(itertools.product(metrics, part, correct_definition))
+        combinations = list(itertools.product(metrics, part, correct_definition, category))
         for r in self.results:
-            for mname, pname, cname in combinations:
+            for mname, pname, cname, catname in combinations:
+                print(mname, pname, cname, catname)
                 if mname == 'perplexity':
                     cname = 'perplexity_correct'
-                p = ([item[mname] for item in r.confidence if self.parts[pname](item["ids"]) ],
-                    [item[cname] for item in r.correctness if self.parts[pname](item["id"])])
+                if catname == 'full':
+                    p = ([item[mname] for item in r.confidence if self.parts[pname](item["ids"]) ],
+                        [item[cname] for item in r.correctness if self.parts[pname](item["id"])])
+                else:
+                    p = ([item[mname] for item, cat in zip(r.confidence, r.category) if self.parts[pname](item["ids"]) and cat == catname ],
+                         [item[cname] for item, cat in zip(r.correctness, r.category) if self.parts[pname](item["id"]) and cat == catname ])
                 try:
                     acc = self.accuracy(p[1])
                     auc = self.auroc(p[0], p[1])
@@ -109,6 +122,7 @@ class Results:
                     df["metric"].append(mname)
                     df["correctness"].append(cname)
                     df["part"].append(pname)
+                    df["category"].append(catname)
                     df["acc"].append(acc)
                     df["auc"].append(auc)
                 except:
