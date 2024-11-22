@@ -21,14 +21,14 @@ def rocs_from_results(results_array, axes, titles):
     for results, ax, title in zip(results_array, axes, titles):
 
         sement = RocCurveDisplay.from_predictions(
-            np.array([r["cluster_correct_strict"] for r in results.correctness]).astype(np.float32),
+            np.array([r["cluster_correct_lowest"] for r in results.correctness]).astype(np.float32),
             -1*np.array([r["entropy"] for r in results.confidence]),
             ax=ax,
             color="red",
             name="Semantic Uncertainty"
         )
         discent = RocCurveDisplay.from_predictions(
-            np.array([r["cluster_correct_strict"] for r in results.correctness]).astype(np.float32),
+            np.array([r["cluster_correct_lowest"] for r in results.correctness]).astype(np.float32),
             -1*np.array([r["dentropy"] for r in results.confidence]),
             ax=ax,
             color="orange",
@@ -46,13 +46,22 @@ def rocs_from_results(results_array, axes, titles):
 
 def su_rocs_from_results(results_array: list[Result], ax, titles, main_title=""):
     for results, title in zip(results_array, titles):
-
-        _ = RocCurveDisplay.from_predictions(
-            np.array([r["cluster_correct_strict"] for r in results.correctness]).astype(np.float32),
-            -1*np.array([r["entropy"] for r in results.confidence]),
-            ax=ax,
-            name=title
-        )
+        
+        def get_string(string):
+            if string == "entropy":
+                return "Semantic Entropy"
+            if string == "dentropy":
+                return "Discrete Semantic Entropy"
+            if string == "perplexity":
+                return "Perplexity"
+            
+        for metric in ["entropy", "dentropy", "perplexity"]:
+            _ = RocCurveDisplay.from_predictions(
+                np.array([r["cluster_correct_lowest"] for r in results.correctness]).astype(np.float32),
+                -1*np.array([r[metric] for r in results.confidence]),
+                ax=ax,
+                name= get_string(metric) + f" ({title})"
+            )
     ax.set_title(main_title)
 
 

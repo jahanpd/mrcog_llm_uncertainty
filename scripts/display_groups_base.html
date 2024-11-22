@@ -1,0 +1,73 @@
+<html>
+<head>
+    <title>Toggle List and Image A/B with Grouped List Items</title>
+    <style>
+        /* Basic styling for the content */
+        #content {
+            margin: 20px;
+        }
+        .toggle-section {
+            display: none; /* Hide sections by default */
+        }
+        .toggle-section.active {
+            display: block; /* Show active section */
+        }
+        #toggleButton {
+            margin-bottom: 20px;
+        }
+        /* Define styles for up to 10 groups */
+        .group1 { color: #e6194B; } /* Red */
+        .group2 { color: #3cb44b; } /* Green */
+        .group3 { color: #ffe119; } /* Yellow */
+        .group4 { color: #4363d8; } /* Blue */
+        .group5 { color: #f58231; } /* Orange */
+        .group6 { color: #911eb4; } /* Purple */
+        .group7 { color: #46f0f0; } /* Cyan */
+        .group8 { color: #f032e6; } /* Magenta */
+        .group9 { color: #bcf60c; } /* Lime */
+        .group10 { color: #fabebe; } /* Pink */
+    </style>
+</head>
+<body>
+    <div id="content">
+        <button id="toggleButton" onclick="toggleSections()">Show List and Image B</button>
+
+        <!-- List and Image A Section -->
+        <div id="sectionA" class="toggle-section active">
+            <ul>
+                {list_one}
+            </ul>
+            <img src={image_one} alt="Image A" width="200">
+        </div>
+
+        <!-- List and Image B Section -->
+        <div id="sectionB" class="toggle-section">
+            <ul>
+                {list_two}
+            </ul>
+            <img src={image_two} alt="Image B" width="200">
+        </div>
+    </div>
+
+    <script>
+        // Get references to DOM elements
+        const toggleButton = document.getElementById('toggleButton');
+        const sectionA = document.getElementById('sectionA');
+        const sectionB = document.getElementById('sectionB');
+
+        // Define the toggle function
+        function toggleSections() {
+            // Toggle active class on sections
+            if (sectionA.classList.contains('active')) {
+                sectionA.classList.remove('active');
+                sectionB.classList.add('active');
+                toggleButton.textContent = 'Show List and Image A';
+            } else {
+                sectionB.classList.remove('active');
+                sectionA.classList.add('active');
+                toggleButton.textContent = 'Show List and Image B';
+            }
+        }
+    </script>
+</body>
+</html>

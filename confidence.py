@@ -43,7 +43,7 @@ def logsumexp_by_id(
     """
     # https://github.com/jlko/semantic_uncertainty/blob/a8d9aa8cecd5f3bec09b19ae38ab13552e0846f4/semantic_uncertainty/uncertainty/uncertainty_measures/semantic_entropy.py#L208
     # note that semantic_set_id 0 is the true answer
-    assert len(log_likelihoods) == len(semantic_ids), f"{len(log_likelihoods)} vs {len(semantic_ids)}" # semantic sets include true answer
+    assert len(log_likelihoods) == len(semantic_ids), f"{len(log_likelihoods)} vs {len(semantic_ids)} {semantic_ids}" # semantic sets include true answer
     log_likelihood_per_semantic_id = []
     # need to filter out the true answer as no logliks for it, has poisiton/id 0
     unique_ids = sorted(list(set([val for key, val in semantic_ids.items()])))
@@ -55,9 +55,9 @@ def logsumexp_by_id(
         if agg == 'sum_normalized':
             # log_lik_norm = id_log_likelihoods - np.prod(log_likelihoods)
             log_lik_norm = np.array(id_log_likelihoods) - np.log(np.sum(np.exp(log_likelihoods)))
-            logsumexp_value = np.log(np.sum(np.exp(log_lik_norm)))
+            logsumexp_value = np.log(np.sum(np.exp(log_lik_norm)) + 1e-8)
         elif agg == 'original':
-            logsumexp_value = np.log(np.sum(np.exp(id_log_likelihoods)))
+            logsumexp_value = np.log(np.sum(np.exp(id_log_likelihoods)) + 1e-8)
         else:
             raise ValueError
         log_likelihood_per_semantic_id.append(logsumexp_value)
@@ -89,7 +89,7 @@ def compute_semantic_uncertainty(
 
     # Length normalization of generation probabilities.
     # log_liks_agg = [np.mean(log_lik) for log_lik in log_likelihoods]
-    log_liks_agg = [np.log(np.sum(np.exp(li - np.log(len(li))))) for li in log_likelihoods]
+    log_liks_agg = [np.log(np.sum(np.exp(li - np.log(len(li) + 1e-8)))) for li in log_likelihoods]
 
     # returns list[float] of likelihoods where index corresponds
     # to unique semantic id, and list[int] of semantic ids
@@ -147,5 +147,5 @@ for sequence in sequences:
         ))
     print(f"e:{entropy:.2f} ed:{entropy_discrete:.2f} s:{sets} sd:{sets_disc}")
     
-with open(f'./data/{MODEL}_{ENTAILMENT}_temp={args.temp}_reas={args.reasoning}_agg={args.agg}_confidence.pkl', 'wb') as outfile:
+with open(f'./data/{MODEL}_{ENTAILMENT}_oneshot={args.oneshot}_temp={args.temp}_reas={args.reasoning}_agg={args.agg}_confidence.pkl', 'wb') as outfile:
     pickle.dump(final_results, outfile)

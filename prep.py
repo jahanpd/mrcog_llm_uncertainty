@@ -6,6 +6,16 @@ from AesEverywhere import aes256
 import os
 import pandas as pd
 
+# generator to yield clinician
+def get_clinician():
+    clinicians = [111, 112, 113]
+    index = 0
+    while True:
+        for c in clinicians:
+            yield c
+
+clinician = get_clinician()
+
 class Item(BaseModel):
     id: int
     question: str
@@ -13,9 +23,10 @@ class Item(BaseModel):
     clusters: list[int]
     perplexity: list[float]
     true_answer: str
+    clinician: int
 
 path = "data/openai_temp=1.0_reasoning=False_generations.pkl"
-path2 = "data/openai_gpt_reas=False_temp=1.0_semantic_similarity.pkl"
+path2 = "data/openai_gpt_oneshot=False_reas=False_temp=1.0_semantic_similarity.pkl"
 data = pickle.load(open(path, "rb"))
 clusters = pickle.load(open(path2, "rb"))
 
@@ -32,17 +43,17 @@ print(clusters[data[0]["id"]])
 for d in data:
     try:
         c = clusters[d["id"]]
-        c = [c[key] for key in range(0, 10)]
+        c = [value for value in c.values()]
         numc = len(set(c))
         item = Item(
-            id = d["id"][0],
-            question = d["question"][0],
+            id = d["id"],
+            question = d["question"],
             generated_answers=d["generated_answers"],
             clusters=c,
             perplexity=[perp if perp < 10000 else 10000 for perp in d["generated_perplexity"]],
-            true_answer=d["true_answer"]
+            true_answer=d["true_answer"],
+            clinician=next(clinician)
         )
-
         filter[numc].append(dict(item))
     except Exception as e:
         print("exception", e)
@@ -74,8 +85,18 @@ for i in range(1, 11):
 
 random.shuffle(output)
 
-print(len(output))
-jsonstring = json.dumps(output, indent=4)
+# limit clinian questions
+counts = {111:0, 112:0, 113:0}
+new_output = []
+
+for qn in output:
+    count = counts[qn["clinician"]]
+    if count <= 35:
+        new_output.append(qn)
+        counts[qn["clinician"]] = count + 1
+
+print(len(new_output))
+jsonstring = json.dumps(new_output, indent=4)
 print(jsonstring[:50])
 
 encrypted = aes256.encrypt(jsonstring, os.environ["SECRET_KEY"])

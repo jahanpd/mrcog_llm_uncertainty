@@ -1,6 +1,6 @@
 import pickle
 import argparse
-from entailment import get_gpt_entailment, get_deberta_entailment
+from entailment import get_gpt_entailment, get_deberta_entailment, get_oneshot_gpt_correctness
 import numpy as np
 from joblib import Parallel, delayed
 
@@ -60,6 +60,8 @@ def process_sequence(s):
     cluster_correct_relaxed = False
     cluster_correct_majority = False
     cluster_correct_lowest = False
+    cluster_correct_oneshot_all = False
+    cluster_correct_oneshot_most = False
 
     # check lowest perplexity answer entailment
     lowest_perp_answer = answers[np.argmin(perplexity)]
@@ -72,6 +74,9 @@ def process_sequence(s):
         cluster_correct_relaxed = np.any(entailed)
         cluster_correct_majority = (np.sum(entailed) / len(entailed)) > 0.5
         cluster_correct_lowest = perplexity_correct # true when there is only one semantic group
+        cluster_correct_oneshot_all, cluster_correct_oneshot_most = get_oneshot_gpt_correctness(
+            question, true_answer, answers
+        )
     else:
         # check for a tie in largest label clusters
         if label_counts[0] == label_counts[1]:
@@ -84,6 +89,9 @@ def process_sequence(s):
             cluster_correct_strict = np.all(entailed)
             cluster_correct_relaxed = np.any(entailed)
             cluster_correct_majority = (np.sum(entailed) / len(entailed)) > 0.5
+            cluster_correct_oneshot_all, cluster_correct_oneshot_most = get_oneshot_gpt_correctness(
+                question, true_answer, answers
+            )
             
             # check lowest perplexity answer in largest group
             lowest_perp_answer = answer_subset[np.argmin(perplexity_subset)]
@@ -98,6 +106,8 @@ def process_sequence(s):
         cluster_correct_relaxed=cluster_correct_relaxed,
         cluster_correct_majority=cluster_correct_majority,
         cluster_correct_lowest=cluster_correct_lowest,
+        cluster_correct_oneshot_all=cluster_correct_oneshot_all,
+        cluster_correct_oneshot_most=cluster_correct_oneshot_most,
         perplexity_correct=perplexity_correct,
         question=question,
         answers=answers,
@@ -111,6 +121,6 @@ for r in results:
     collected_correctness.append(r)
 
 
-with open(f'./data/{args.model}_{args.entailment}_temp={args.temp}_reas={args.reasoning}_checker={args.checker}_correctness.pkl', 'wb') as outfile:
+with open(f'./data/{args.model}_{args.entailment}_oneshot={args.oneshot}_temp={args.temp}_reas={args.reasoning}_checker={args.checker}_correctness.pkl', 'wb') as outfile:
     pickle.dump(collected_correctness, outfile)
 
