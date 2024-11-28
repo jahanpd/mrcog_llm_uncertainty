@@ -24,11 +24,14 @@ class Item(BaseModel):
     perplexity: list[float]
     true_answer: str
     clinician: int
+    correct: bool
 
 path = "data/openai_temp=1.0_reasoning=False_generations.pkl"
 path2 = "data/openai_gpt_oneshot=False_reas=False_temp=1.0_semantic_similarity.pkl"
+path3 = "data/openai_gpt_oneshot=False_temp=1.0_reas=False_checker=gpt_correctness.pkl"
 data = pickle.load(open(path, "rb"))
 clusters = pickle.load(open(path2, "rb"))
+correctness = pickle.load(open(path3, "rb"))
 
 questions = pd.read_csv("~/Jahan_Subset_v2.csv")
 
@@ -44,6 +47,8 @@ for d in data:
     try:
         c = clusters[d["id"]]
         c = [value for value in c.values()]
+        marking = [res for res in correctness if res["id"] == d["id"]]
+        assert len(marking) == 1
         numc = len(set(c))
         item = Item(
             id = d["id"],
@@ -52,7 +57,8 @@ for d in data:
             clusters=c,
             perplexity=[perp if perp < 10000 else 10000 for perp in d["generated_perplexity"]],
             true_answer=d["true_answer"],
-            clinician=next(clinician)
+            clinician=next(clinician),
+            correct=marking[0]["cluster_correct_lowest"]
         )
         filter[numc].append(dict(item))
     except Exception as e:
@@ -89,13 +95,17 @@ random.shuffle(output)
 counts = {111:0, 112:0, 113:0}
 new_output = []
 
+correct = {}
 for qn in output:
     count = counts[qn["clinician"]]
     if count <= 35:
         new_output.append(qn)
+        correct[qn["id"]] = qn["correct"]
         counts[qn["clinician"]] = count + 1
 
+
 print(len(new_output))
+
 jsonstring = json.dumps(new_output, indent=4)
 print(jsonstring[:50])
 
@@ -105,3 +115,6 @@ print(encrypted[:50])
 
 with open('data/encrypted.json', 'w') as f:
     f.write(encrypted.decode('utf-8'))
+
+with open(f'correct.pickle', 'wb') as outfile:
+    pickle.dump(correct, outfile)
