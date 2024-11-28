@@ -21,17 +21,22 @@ class Item(BaseModel):
     question: str
     generated_answers: list[str]
     clusters: list[int]
+    sement: float
+    dsement: float
     perplexity: list[float]
     true_answer: str
     clinician: int
-    correct: bool
+    correct_cluster: bool
+    correct_perp: bool
 
 path = "data/openai_temp=1.0_reasoning=False_generations.pkl"
 path2 = "data/openai_gpt_oneshot=False_reas=False_temp=1.0_semantic_similarity.pkl"
 path3 = "data/openai_gpt_oneshot=False_temp=1.0_reas=False_checker=gpt_correctness.pkl"
+path4 = "data/openai_gpt_oneshot=False_temp=1.0_reas=False_agg=original_confidence.pkl"
 data = pickle.load(open(path, "rb"))
 clusters = pickle.load(open(path2, "rb"))
 correctness = pickle.load(open(path3, "rb"))
+confidence = pickle.load(open(path4, "rb"))
 
 questions = pd.read_csv("~/Jahan_Subset_v2.csv")
 
@@ -40,14 +45,12 @@ filter = {}
 for i in range(1, 11):
     filter[i] = []
 
-print(data[0])
-print(clusters[data[0]["id"]])
-
 for d in data:
     try:
         c = clusters[d["id"]]
         c = [value for value in c.values()]
         marking = [res for res in correctness if res["id"] == d["id"]]
+        conf = [res for res in confidence if res["ids"] == d["id"]]
         assert len(marking) == 1
         numc = len(set(c))
         item = Item(
@@ -55,10 +58,13 @@ for d in data:
             question = d["question"],
             generated_answers=d["generated_answers"],
             clusters=c,
+            sement=conf[0]["entropy"],
+            dsement=conf[0]["dentropy"],
             perplexity=[perp if perp < 10000 else 10000 for perp in d["generated_perplexity"]],
             true_answer=d["true_answer"],
             clinician=next(clinician),
-            correct=marking[0]["cluster_correct_lowest"]
+            correct_cluster=marking[0]["cluster_correct_lowest"],
+            correct_perp=marking[0]["perplexity_correct"]
         )
         filter[numc].append(dict(item))
     except Exception as e:
@@ -100,10 +106,16 @@ for qn in output:
     count = counts[qn["clinician"]]
     if count <= 35:
         new_output.append(qn)
-        correct[qn["id"]] = qn["correct"]
+        correct[qn["id"]] = {
+            "correct_perp":qn["correct_perp"],
+            "correct_cluster":qn["correct_cluster"],
+            "sement":qn["sement"],
+            "dsement":qn["dsement"]
+            }
         counts[qn["clinician"]] = count + 1
 
 
+print(correct)
 print(len(new_output))
 
 jsonstring = json.dumps(new_output, indent=4)
