@@ -145,15 +145,6 @@ class Results:
                     [item[cname] for item, cat, length in zip(r.correctness, r.category, r.length) if self.parts[pname](item["id"], cat, length)])
 
                 try:
-                    acc = []
-                    for _ in range(steps):
-                        indices = random.choices(range(len(p[0])), k=len(p[0]))
-                        try:
-                            acc_val = self.accuracy([p[1][idx] for idx in indices])
-                            acc.append(acc_val)
-                        except Exception as e:
-                            print(e)
-
                     df["temp"].append(r.temp)
                     df["reasoning"].append(r.reasoning)
                     df["entailment"].append(r.entailment)
@@ -162,8 +153,8 @@ class Results:
                     df["correctness"].append(cname)
                     df["part"].append(pname)
 
+                    acc, ci_lower, ci_upper = self.accuracy(p[1])
                     df["acc"].append(np.mean(acc))
-                    ci_lower, ci_upper = confidence_interval(acc)
                     df["acc_ci_l"].append(ci_lower)
                     df["acc_ci_u"].append(ci_upper)
 
@@ -182,7 +173,17 @@ class Results:
     
     def accuracy(self, correct):
         arr = np.array(correct).astype(np.float32)
-        return arr.sum() / arr.shape[0]
+        # https://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval
+        p = arr.sum() / arr.shape[0]
+        n = len(arr)
+        z = 1.96
+        d = 1 + z**2/n
+        cap = p + z*z / (2*n)
+        asd = np.sqrt((p*(1 - p) + z*z / (4*n)) / n)
+
+        lower = (cap - z*asd) / d
+        upper  = (cap + z*asd) / d
+        return p, lower, upper
 
     def auroc(self, score, correct):
         AUC = roc_auc_score(
